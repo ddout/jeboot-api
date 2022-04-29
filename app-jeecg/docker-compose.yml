@@ -1,0 +1,58 @@
+version: '3'
+services:
+  mysql:
+   image: mysql:5.7.14
+   restart: always
+   ports:
+    - 3306:3306
+   environment:
+    - MYSQL_ROOT_PASSWORD=root123
+    
+   volumes:
+    - /home/jeecg/mysql-data:/var/lib/mysql
+    - /home/jeecg/mysql.cnf:/etc/mysql/conf.d/mysql.cnf
+
+  redis:
+   image: redis:latest
+   restart: always
+   ports:
+    - 6379:6379
+
+
+  jeeboot-front:
+    image: jeeboot-vue:latest
+    restart: always
+    ports:
+    - 9999:80
+    expose:
+      - "80"
+
+  jeecg-boot-system:
+    image: jeeboot-api:latest
+    restart: always
+    # admin admin@321
+    # environment:
+    #   - DATASOURCE_URL=jdbc:mysql://mysql:3306/adp_framework
+    #   - DATASOURCE_USERNAME=root
+    #   - DATASOURCE_PASSWORD=Root123
+    #   - REDIS_HOST=redis
+    #   - LOGGING_LEVEL=INFO
+    volumes:
+      - /home/jeecg/uploads:/opt/upFiles
+    expose:
+      - "8080"
+    depends_on:
+      - mysql
+    # command: >
+    #   /bin/bash -c '
+    #   while ! nc -z mysql 3306;
+    #   do
+    #     echo "wait for mysql";
+    #     sleep 1;
+    #   done;
+
+    #   echo "mysql is ready!";
+    #   echo "start web service portal-api here";
+    #   '
+
+
