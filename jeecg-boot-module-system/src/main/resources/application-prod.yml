@@ -321,3 +321,17 @@ third-app:
       # appSecret
       client-secret: ??
       agent-id: ??
+
+#开发系统配置
+account-dev:
+  #GIT-lab
+  git-url: http://192.168.11.202/
+  git-token: xxxxx
+  #禅道
+  zentao-url: http://dev.aiaudit.cn:8021/zentao
+  admin-account: xxx
+  admin-psw: xxx
+  default-dept: 18
+  default-role: dev
+  default-group: 24
+  default-psw: xxx

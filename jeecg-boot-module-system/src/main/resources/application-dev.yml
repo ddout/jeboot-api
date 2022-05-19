@@ -134,7 +134,7 @@ spring:
         connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
       datasource:
         master:
-          url: jdbc:mysql://mysql:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+          url: jdbc:mysql://192.168.11.234:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
           username: root
           password: root123
           driver-class-name: com.mysql.cj.jdbc.Driver
@@ -147,7 +147,7 @@ spring:
   #redis 配置
   redis:
     database: 0
-    host: redis
+    host: 192.168.11.234
     lettuce:
       pool:
         max-active: 8   #最大连接数据库连接数,设 -1 为没有限制
@@ -327,3 +327,18 @@ third-app:
       # appSecret
       client-secret: ??
       agent-id: ??
+
+#开发系统配置
+account-dev:
+  #GIT-lab
+  git-url: http://192.168.11.202/
+  git-token: xxxxx
+  #禅道
+  zentao-url: http://dev.aiaudit.cn:8021/zentao
+  admin-account: xxx
+  admin-psw: xxx
+  default-dept: 18
+  default-role: dev
+  default-group: 24
+  default-psw: xxx
+
