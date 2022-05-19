@@ -25,6 +25,10 @@ public class AppAuthConfig {
   //GIT-lab
   private String gitUrl;
   private String gitToken;
-
+  //VPN
+  private String vpnUrl;
+  private String vpnAdmin;
+  private String vpnPwd;
+  private String vpnGroups;
 
 }

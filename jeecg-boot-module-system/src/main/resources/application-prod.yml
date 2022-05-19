@@ -335,3 +335,7 @@ account-dev:
   default-role: dev
   default-group: 24
   default-psw: xxx
+  vpn-url: https://192.168.11.210:8800
+  vpn-admin: admin
+  vpn-pwd: admin
+  vpn-groups: 智审数据

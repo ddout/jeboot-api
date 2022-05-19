@@ -330,6 +330,7 @@ third-app:
 
 #开发系统配置
 account-dev:
+  default-psw: xxx
   #GIT-lab
   git-url: http://192.168.11.202/
   git-token: xxxxx
@@ -340,5 +341,9 @@ account-dev:
   default-dept: 18
   default-role: dev
   default-group: 24
-  default-psw: xxx
+  #VPN
+  vpn-url: https://192.168.11.210:8800
+  vpn-admin: admin
+  vpn-pwd: admin
+  vpn-groups: 智审数据
 
