@@ -12,7 +12,7 @@ public class Main {
   public static void main(String[] args) throws GitLabApiException {
     // Create a GitLabApi instance to communicate with your GitLab server
     GitLabApi gitLabApi = new GitLabApi("http://192.168.11.202/",
-        "BFFVZagViSji5SBUG754");
+        "");
 
     // Get the list of projects your account has access to
 

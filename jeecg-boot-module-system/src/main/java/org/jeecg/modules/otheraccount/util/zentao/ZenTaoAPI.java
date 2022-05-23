@@ -37,10 +37,10 @@ import org.jeecg.modules.otheraccount.util.zentao.proxy.Constant;
 
 public class ZenTaoAPI {
 
-  private static final String admin_account = "bin.duan";
-  private static final String admin_psw = "Diabldd113";
+  private static final String admin_account = "";
+  private static final String admin_psw = "";
   private static final String default_dept = "18";
-  private static final String default_psw = "Abc@123456";
+  private static final String default_psw = "";
   private static final String default_role = "dev";
   private static final String default_group = "24";
 
