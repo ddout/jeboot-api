@@ -8,7 +8,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -33,28 +32,10 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
-import org.jeecg.modules.otheraccount.util.zentao.proxy.Constant;
 
 public class ZenTaoAPI {
 
-  private static final String admin_account = "";
-  private static final String admin_psw = "";
-  private static final String default_dept = "18";
-  private static final String default_psw = "";
-  private static final String default_role = "dev";
-  private static final String default_group = "24";
-
-
-
-  public static void main(String[] args) {
-    System.out.println(createZentaoUser("test0010", "测试创建账号-001"));
-  }
-
-  /**
-   * ⽤来存取cookies信息的变量.
-   */
-  private static CookieStore cookieStore;
-  private static String jsScript = "/*!\n"
+  private static final String jsScript = "/*!\n"
       + " * Joseph Myer's md5() algorithm wrapped in a self-invoked function to prevent\n"
       + " * global namespace polution, modified to hash unicode characters as UTF-8.\n"
       + " *  \n"
@@ -249,8 +230,357 @@ public class ZenTaoAPI {
       + "return (msw << 16) | (lsw & 0xFFFF);\n"
       + "}\n"
       + "}\n";
+  //
+  private String admin_account;
+  private String admin_psw;
+  private String base_url;
+  /**
+   * ⽤来存取cookies信息的变量.
+   */
+  private CookieStore cookieStore;
+  private String default_dept;
+  private String default_group;
+  private String default_pwd;
+  private String default_role;
 
-  public static String getHtml(String url) {
+  //
+  public ZenTaoAPI(String url, String admin_account, String admin_psw, String default_pwd,
+      String default_dept, String default_group, String default_role) {
+    this.base_url = url;
+    this.admin_account = admin_account;
+    this.admin_psw = admin_psw;
+    this.default_pwd = default_pwd;
+    this.default_dept = default_dept;
+    this.default_group = default_group;
+    this.default_role = default_role;
+  }
+
+  /**
+   * 字符串转换unicode
+   */
+  private static String string2Unicode(String string) {
+    StringBuffer unicode = new StringBuffer();
+    for (int i = 0; i < string.length(); i++) {
+      // 取出每一个字符
+      char c = string.charAt(i);
+      // 转换为unicode
+      unicode.append("\\u" + Integer.toHexString(c));
+    }
+
+    return unicode.toString();
+  }
+
+  public ZenTaoAPI createZentaoUser(String account, String realname, String email) {
+    String session = doGet(this.base_url + "/api-getsessionid.json", null, false);
+    JsonParser parse = new JsonParser();
+    JsonObject jsonSession = (JsonObject) parse.parse(session);
+    JsonObject jsonObj = (JsonObject) parse
+        .parse(jsonSession.get("data").getAsJsonPrimitive().getAsString());
+    String sessionID = jsonObj.get("sessionID").toString();
+    Map<String, String> map = new HashMap<String, String>();
+    map.put("account", admin_account);
+    map.put("password", admin_psw);
+    map.put("zentaosid", sessionID);
+    String login = doGet(this.base_url + "/user-login.json", map, true);
+    String user = doGet(this.base_url + "/user-view-admin.json", null, true);
+    String rand = getHtmlRand(this.base_url + "/user-create-0.html");
+    //
+    //
+    Map<String, String> params = new HashMap<String, String>();
+    params.put("dept", default_dept);
+    params.put("account", account);
+    params.put("password1", getJsMd5(this.default_pwd) + rand);
+    params.put("password2", getJsMd5(this.default_pwd) + rand);
+    params.put("realname", realname);
+    params.put("join", new SimpleDateFormat("YYYY-MM-dd").format(new Date()));
+    params.put("role", this.default_role);
+    params.put("group", this.default_group);
+    params.put("email", email);
+    params.put("commiter", "");
+    params.put("gender", "m");
+    //
+    params.put("verifyPassword", getJsMd5(getJsMd5(this.admin_psw) + rand));
+    params.put("passwordStrength", "1");
+    //
+    //
+    String result = doPost(this.base_url + "/user-create-0.json", params, true);
+    //{"result":"fail","message":{"account":["\u300e\u7528\u6237\u540d\u300f\u5df2\u7ecf\u6709\u300etest0001\u300f\u8fd9\u6761\u8bb0\u5f55\u4e86\u3002\u5982\u679c\u60a8\u786e\u5b9a\u8be5\u8bb0\u5f55\u5df2\u5220\u9664\uff0c\u8bf7\u5230\u540e\u53f0-\u6570\u636e-\u56de\u6536\u7ad9\u8fd8\u539f\u3002"]}}
+    //{"result":"success","message":"\u4fdd\u5b58\u6210\u529f","locate":"\/zentao\/company-browse.json"}
+    //
+    com.alibaba.fastjson.JSONObject resultJSON = com.alibaba.fastjson.JSONObject
+        .parseObject(result);
+    if (!"success".equals(resultJSON.getString("result").toLowerCase())) {
+      String[] msg = resultJSON.getJSONObject("message").getObject("account", String[].class);
+      throw new RuntimeException("禅道创建失败！" + msg[0]);
+    }
+
+    return this;
+  }
+
+  /*
+   * @date: 2020年4⽉30⽇下午5:1208
+   * @author: 宋
+   * 向指定url发起请求，可携带参数，并选择是否携带cookie
+   */
+  private String doGet(String url, Map<String, String> params, boolean isCookie) {
+//获取httpclient客户端
+    CloseableHttpClient httpclient = HttpClients.createDefault();
+    String resultString = "";
+    CloseableHttpResponse response = null;
+    try {
+      URIBuilder builder = new URIBuilder(url);
+      if (null != params) {
+        for (String key : params.keySet()) {
+          builder.setParameter(key, params.get(key));
+        }
+      }
+      HttpGet get = new HttpGet(builder.build());
+      if (!isCookie) {
+        response = httpclient.execute(get);
+        System.out.println(response.getStatusLine());
+        if (200 == response.getStatusLine().getStatusCode()) {
+          HttpEntity entity = response.getEntity();
+          resultString = EntityUtils.toString(entity, "utf-8");
+        }
+      } else {
+        resultString = GetCookies(get);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    } finally {
+      if (null != response) {
+        try {
+          response.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+      if (null != httpclient) {
+        try {
+          httpclient.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+    }
+    return resultString;
+  }
+
+  public String getHtmlRand(String url) {
+    String result = doGetHtml(url, true);
+    int star = result.indexOf("<input type='hidden' name='verifyRand' id='verifyRand' value='");
+    int end = result.indexOf("' />", star);
+    System.out.println("start: " + star);
+    System.out.println("end: " + end);
+    String verifyRand = result.substring(star + 62, star + 72);
+    verifyRand = verifyRand.replaceAll("'", "");
+    System.out.println("verifyRand: " + verifyRand);
+    System.out.println("verifyRandlength: " + verifyRand.length());
+    return verifyRand;
+  }
+
+  private String getJsMd5(String pwd) {
+    Object invoke = null;
+    try {
+      ScriptEngineManager manager = new ScriptEngineManager();
+      ScriptEngine engine = manager.getEngineByName("javascript");
+      engine.eval(jsScript);
+      Invocable in = (Invocable) engine;
+      invoke = in.invokeFunction("md5", pwd);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return invoke.toString();
+  }
+
+  private String doPost(String url, Map<String, String> params, boolean isCookie) {
+    return doPost(url, params, isCookie, "UTF-8");
+  }
+
+  /**
+   * unicode 转字符串
+   *
+   * @param unicode 全为 Unicode 的字符串
+   */
+  public static String unicode2String(String unicode) {
+    StringBuffer string = new StringBuffer();
+    String[] hex = unicode.split("\\\\u");
+
+    for (int i = 1; i < hex.length; i++) {
+      // 转换出每一个代码点
+      int data = Integer.parseInt(hex[i], 16);
+      // 追加成string
+      string.append((char) data);
+    }
+
+    return string.toString();
+  }
+
+  /*
+   * @date: 2020年4⽉30⽇下午5:0957
+   * @author: 宋
+   * 获取登录过后的cookie 存⼊ cookieStore对象
+   */
+  private String GetCookies(HttpGet get) throws IOException {
+    String result = null;
+    try {
+      if (null == cookieStore) {
+        cookieStore = new BasicCookieStore();
+      }
+// 获取 响应
+      CloseableHttpClient httpClient = HttpClients.custom().setDefaultCookieStore(cookieStore)
+          .build();
+      CloseableHttpResponse response = httpClient.execute(get);
+      result = EntityUtils.toString(response.getEntity(), "utf-8");
+// // 获取cookies信息
+// List<Cookie> cookies = cookieStore.getCookies();
+// for (Cookie cookie : cookies) {
+// String name = cookie.getName();
+// String value = cookie.getValue();
+// System.out.println("cookies: key= "+ name + " value= " + value);
+// }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    return result;
+  }
+
+
+  /*
+   * @date: 2020年4⽉30⽇下午5:1544
+   * @author: 宋
+   * 获取html⻚⾯，并选择是否携带cookie发出请求
+   */
+  private String doGetHtml(String url, boolean isCookie) {
+//获取httpclient客户端
+    CloseableHttpClient httpclient = HttpClients.createDefault();
+    String resultString = "";
+    CloseableHttpResponse response = null;
+    try {
+      HttpGet get = new HttpGet(url);
+      if (!isCookie) {
+        response = httpclient.execute(get);
+        System.out.println(response.getStatusLine());
+        if (200 == response.getStatusLine().getStatusCode()) {
+          HttpEntity entity = response.getEntity();
+          resultString = EntityUtils.toString(entity, "utf-8");
+        }
+      } else {
+        resultString = GetCookies(get);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    } finally {
+      if (null != response) {
+        try {
+          response.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+      if (null != httpclient) {
+        try {
+          httpclient.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+    }
+    return resultString;
+  }
+
+
+  private String doPost(String url, Map<String, String> params, boolean isCookie,
+      String encode) {
+/**
+ * 在4.0及以上httpclient版本中，post需要指定重定向的策略，如果不指定则按默认的重定向策略。
+ *
+ * 获取httpclient客户端
+ */
+    CloseableHttpClient httpclient = HttpClientBuilder.create()
+        .setRedirectStrategy(new LaxRedirectStrategy()).build();
+    String resultString = "";
+    CloseableHttpResponse response = null;
+    try {
+      HttpPost post = new HttpPost(url);
+      List<NameValuePair> paramaters = new ArrayList<NameValuePair>();
+      if (null != params) {
+        for (String key : params.keySet()) {
+          paramaters.add(new BasicNameValuePair(key, params.get(key)));
+        }
+        UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(paramaters, encode);
+        post.setEntity(formEntity);
+      }
+      /**
+       * HTTP/1.1 403 Forbidden
+       * 原因：
+       * 有些⽹站，设置了反爬⾍机制
+       * 解决的办法：
+       * 设置请求头，伪装浏览器
+       */
+      post.addHeader("user-agent",
+          "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36");
+      post.addHeader("Accept-Language",
+          "zh-CN,zh;q=0.9");
+      post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+      if (!isCookie) {
+        response = httpclient.execute(post);
+        System.out.println(response.getStatusLine());
+        if (200 == response.getStatusLine().getStatusCode()) {
+          HttpEntity entity = response.getEntity();
+          resultString = EntityUtils.toString(entity, encode);
+        }
+      } else {
+        resultString = postCookies(post);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    } finally {
+      if (null != response) {
+        try {
+          response.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+      if (null != httpclient) {
+        try {
+          httpclient.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
+      }
+    }
+    return resultString;
+  }
+
+
+  private String postCookies(HttpPost Post) throws IOException {
+    String result = null;
+    try {
+      if (null == cookieStore) {
+        cookieStore = new BasicCookieStore();
+      }
+// 获取 响应
+      CloseableHttpClient httpClient = HttpClients.custom().setDefaultCookieStore(cookieStore)
+          .build();
+      CloseableHttpResponse response = httpClient.execute(Post);
+      result = EntityUtils.toString(response.getEntity(), "utf-8");
+// // 获取cookies信息
+// List<Cookie> cookies = cookieStore.getCookies();
+// for (Cookie cookie : cookies) {
+// String name = cookie.getName();
+// String value = cookie.getValue();
+// System.out.println("cookies: key= "+ name + " value= " + value);
+// }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    return result;
+  }
+
+
+  private String getHtml(String url) {
     URL URL = null;
     HttpURLConnection conn = null;
     InputStream in = null;
@@ -289,327 +619,5 @@ public class ZenTaoAPI {
     return contentType.substring(star + 8);
   }
 
-
-  public static String createZentaoUser(String account,String realname){
-    String session = doGet(Constant.ZENTAO_ADDRESS + "/api-getsessionid.json", null, false);
-    JsonParser parse = new JsonParser();
-    JsonObject jsonSession = (JsonObject) parse.parse(session);
-    System.out.println("Session: " + jsonSession);
-    JsonObject jsonObj = (JsonObject) parse
-        .parse(jsonSession.get("data").getAsJsonPrimitive().getAsString());
-    String sessionID = jsonObj.get("sessionID").toString();
-    System.out.println("sessionID: " + jsonObj.get("sessionID"));
-    Map<String, String> map = new HashMap<String, String>();
-    map.put("account", admin_account);
-    map.put("password", admin_psw);
-    map.put("zentaosid", sessionID);
-    String login = doGet(Constant.ZENTAO_ADDRESS + "/user-login.json", map, true);
-    System.out.println("login :" + login);
-    String user = doGet(Constant.ZENTAO_ADDRESS + "/user-view-admin.json", null, true);
-    System.out.println("user :" + user);
-    System.out.println("userLength : " + user.length());
-    String rand = getHtmlRand(Constant.ZENTAO_ADDRESS + "/user-create-0.html");
-// System.out.println(html);
-// http://127.0.0.1/zentao/js/md5.js?v=12.3
-//    jsScript = doGet(Constant.ZENTAO_ADDRESS + "/js/md5.js?v=12.5.3", null, true);
-// System.out.println(js);
-    Map<String, String> params = new HashMap<String, String>();
-    params.put("dept", default_dept);
-    params.put("account", account);
-    params.put("password1", getJsMd5(default_psw) + rand);
-    params.put("password2", getJsMd5(default_psw) + rand);
-    try{
-      params.put("realname", realname);
-    } catch (Exception e) {
-      params.put("realname", account);
-    }
-    params.put("join", new SimpleDateFormat("YYYY-MM-dd").format(new Date()));
-    params.put("role", default_role);
-    params.put("group", default_group);
-    params.put("email", "123@qq.com");
-    params.put("commiter", "");
-    params.put("gender", "m");
-    params.put("verifyPassword", getJsMd5(getJsMd5(admin_psw) + rand));
-    params.put("passwordStrength", "1");
-    System.out.println(params);
-    String result = doPost(Constant.ZENTAO_ADDRESS + "/user-create-0.json", params, true);
-    System.out.println(result);
-
-    return result;
-  }
-
-
-
-
-
-  /*
-   * @date: 2020年4⽉30⽇下午5:1208
-   * @author: 宋
-   * 向指定url发起请求，可携带参数，并选择是否携带cookie
-   */
-  public static String doGet(String url, Map<String, String> params, boolean isCookie) {
-//获取httpclient客户端
-    CloseableHttpClient httpclient = HttpClients.createDefault();
-    String resultString = "";
-    CloseableHttpResponse response = null;
-    try {
-      URIBuilder builder = new URIBuilder(url);
-      if (null != params) {
-        for (String key : params.keySet()) {
-          builder.setParameter(key, params.get(key));
-        }
-      }
-      HttpGet get = new HttpGet(builder.build());
-      if (!isCookie) {
-        response = httpclient.execute(get);
-        System.out.println(response.getStatusLine());
-        if (200 == response.getStatusLine().getStatusCode()) {
-          HttpEntity entity = response.getEntity();
-          resultString = EntityUtils.toString(entity, "utf-8");
-        }
-      } else {
-        resultString = GetCookies(get);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    } finally {
-      if (null != response) {
-        try {
-          response.close();
-        } catch (IOException e) {
-// TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-      if (null != httpclient) {
-        try {
-          httpclient.close();
-        } catch (IOException e) {
-// TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-    }
-    return resultString;
-  }
-
-
-  public static String getHtmlRand(String url) {
-    String result = doGetHtml(url, true);
-    int star = result.indexOf("<input type='hidden' name='verifyRand' id='verifyRand' value='");
-    int end = result.indexOf("' />", star);
-    System.out.println("start: " + star);
-    System.out.println("end: " + end);
-    String verifyRand = result.substring(star + 62, star + 72);
-    verifyRand = verifyRand.replaceAll("'", "");
-    System.out.println("verifyRand: " + verifyRand);
-    System.out.println("verifyRandlength: " + verifyRand.length());
-    return verifyRand;
-  }
-
-
-  public static String getJsMd5(String pwd) {
-    Object invoke = null;
-    try {
-      ScriptEngineManager manager = new ScriptEngineManager();
-      ScriptEngine engine = manager.getEngineByName("javascript");
-      engine.eval(jsScript);
-      Invocable in = (Invocable) engine;
-      invoke = in.invokeFunction("md5", pwd);
-    } catch (Exception e) {
-// TODO: handle exception
-      e.printStackTrace();
-    }
-    System.out.println(invoke);
-    return invoke.toString();
-  }
-
-  public static String doPost(String url, Map<String, String> params, boolean isCookie){
-    return doPost(url, params, isCookie, "UTF-8");
-  }
-
-  public static String doPost(String url, Map<String, String> params, boolean isCookie, String encode) {
-/**
- * 在4.0及以上httpclient版本中，post需要指定重定向的策略，如果不指定则按默认的重定向策略。
- *
- * 获取httpclient客户端
- */
-    CloseableHttpClient httpclient = HttpClientBuilder.create()
-        .setRedirectStrategy(new LaxRedirectStrategy()).build();
-    String resultString = "";
-    CloseableHttpResponse response = null;
-    try {
-      HttpPost post = new HttpPost(url);
-      List<NameValuePair> paramaters = new ArrayList<NameValuePair>();
-      if (null != params) {
-        for (String key : params.keySet()) {
-          paramaters.add(new BasicNameValuePair(key, params.get(key)));
-        }
-        UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(paramaters,encode);
-        post.setEntity(formEntity);
-      }
-    /**
-     * HTTP/1.1 403 Forbidden
-     * 原因：
-     * 有些⽹站，设置了反爬⾍机制
-     * 解决的办法：
-     * 设置请求头，伪装浏览器
-     */
-      post.addHeader("user-agent",
-          "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36");
-      post.addHeader("Accept-Language",
-          "zh-CN,zh;q=0.9");
-      post.addHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-      if (!isCookie) {
-        response = httpclient.execute(post);
-        System.out.println(response.getStatusLine());
-        if (200 == response.getStatusLine().getStatusCode()) {
-          HttpEntity entity = response.getEntity();
-          resultString = EntityUtils.toString(entity, encode);
-        }
-      } else {
-        resultString = PostCookies(post);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    } finally {
-      if (null != response) {
-        try {
-          response.close();
-        } catch (IOException e) {
-// TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-      if (null != httpclient) {
-        try {
-          httpclient.close();
-        } catch (IOException e) {
-// TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-    }
-    return resultString;
-  }
-
-
-  /*
-   * @date: 2020年4⽉30⽇下午5:0957
-   * @author: 宋
-   * 获取登录过后的cookie 存⼊ cookieStore对象
-   */
-  public static String GetCookies(HttpGet get) throws IOException {
-    String result = null;
-    try {
-      if (null == cookieStore) {
-        cookieStore = new BasicCookieStore();
-      }
-// 获取 响应
-      CloseableHttpClient httpClient = HttpClients.custom().setDefaultCookieStore(cookieStore)
-          .build();
-      CloseableHttpResponse response = httpClient.execute(get);
-      result = EntityUtils.toString(response.getEntity(), "utf-8");
-// // 获取cookies信息
-// List<Cookie> cookies = cookieStore.getCookies();
-// for (Cookie cookie : cookies) {
-// String name = cookie.getName();
-// String value = cookie.getValue();
-// System.out.println("cookies: key= "+ name + " value= " + value);
-// }
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-    return result;
-  }
-
-
-  /*
-   * @date: 2020年4⽉30⽇下午5:1544
-   * @author: 宋
-   * 获取html⻚⾯，并选择是否携带cookie发出请求
-   */
-  public static String doGetHtml(String url, boolean isCookie) {
-//获取httpclient客户端
-    CloseableHttpClient httpclient = HttpClients.createDefault();
-    String resultString = "";
-    CloseableHttpResponse response = null;
-    try {
-      HttpGet get = new HttpGet(url);
-      if (!isCookie) {
-        response = httpclient.execute(get);
-        System.out.println(response.getStatusLine());
-        if (200 == response.getStatusLine().getStatusCode()) {
-          HttpEntity entity = response.getEntity();
-          resultString = EntityUtils.toString(entity, "utf-8");
-        }
-      } else {
-        resultString = GetCookies(get);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    } finally {
-      if (null != response) {
-        try {
-          response.close();
-        } catch (IOException e) {
-// TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-      if (null != httpclient) {
-        try {
-          httpclient.close();
-        } catch (IOException e) {
-// TODO Auto-generated catch block
-          e.printStackTrace();
-        }
-      }
-    }
-    return resultString;
-  }
-
-
-  public static String PostCookies(HttpPost Post) throws IOException {
-    String result = null;
-    try {
-      if (null == cookieStore) {
-        cookieStore = new BasicCookieStore();
-      }
-// 获取 响应
-      CloseableHttpClient httpClient = HttpClients.custom().setDefaultCookieStore(cookieStore)
-          .build();
-      CloseableHttpResponse response = httpClient.execute(Post);
-      result = EntityUtils.toString(response.getEntity(), "utf-8");
-// // 获取cookies信息
-// List<Cookie> cookies = cookieStore.getCookies();
-// for (Cookie cookie : cookies) {
-// String name = cookie.getName();
-// String value = cookie.getValue();
-// System.out.println("cookies: key= "+ name + " value= " + value);
-// }
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-    return result;
-  }
-
-
-  /**
-   * 字符串转换unicode
-   * @param string
-   * @return
-   */
-  public static String string2Unicode(String string) {
-    StringBuffer unicode = new StringBuffer();
-    for (int i = 0; i < string.length(); i++) {
-      // 取出每一个字符
-      char c = string.charAt(i);
-      // 转换为unicode
-      unicode.append("\\u" + Integer.toHexString(c));
-    }
-
-    return unicode.toString();
-  }
 
 }
