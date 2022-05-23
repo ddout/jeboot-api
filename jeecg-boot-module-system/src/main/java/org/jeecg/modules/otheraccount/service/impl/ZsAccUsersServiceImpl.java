@@ -8,7 +8,9 @@ import org.gitlab4j.api.GitLabApiException;
 import org.gitlab4j.api.models.User;
 import org.jeecg.modules.otheraccount.config.AppAuthConfig;
 import org.jeecg.modules.otheraccount.entity.ZsAccUsers;
+import org.jeecg.modules.otheraccount.entity.ZtUser;
 import org.jeecg.modules.otheraccount.mapper.ZsAccUsersMapper;
+import org.jeecg.modules.otheraccount.service.IZenTaoService;
 import org.jeecg.modules.otheraccount.service.IZsAccUsersService;
 import org.jeecg.modules.otheraccount.util.PinYinUtil;
 import org.jeecg.modules.otheraccount.util.vpn.VpnApiUtil;
@@ -28,6 +30,8 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
 
   @Autowired
   private AppAuthConfig appAuthConfig;
+  @Autowired
+  private IZenTaoService zenTaoService;
 
   @Override
   public boolean save(ZsAccUsers zsAccUsers) {
@@ -55,7 +59,7 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
     String unamePinyin = PinYinUtil.strToPinyin(zsAccUsers.getUname());
     //
     if (StringUtils.isEmpty(zsAccUsers.getUemail())) {
-      zsAccUsers.setUemail(unamePinyin + "qq.com");
+      zsAccUsers.setUemail(unamePinyin + "@qq.com");
     }
     //
     //GIT
@@ -89,6 +93,18 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
     }
     //ZENTAO
     if (uaccs.indexOf("ZENTAO") > -1) {
+      ZtUser ztUser = zenTaoService.getUser4Account(unamePinyin);
+      if (null != ztUser && null != ztUser.getId()) {
+        zsAccUsers.setUaccZentao(unamePinyin);
+      } else {
+        //创建vpn账号
+        ztUser = new ZtUser();
+        ztUser.setAccount(unamePinyin);
+        ztUser.setRealname(zsAccUsers.getUname());
+        ztUser.setEmail(zsAccUsers.getUemail());
+        zenTaoService.createZtUser(ztUser);
+        zsAccUsers.setUaccZentao(unamePinyin);
+      }
     }
     return super.save(zsAccUsers);
   }
