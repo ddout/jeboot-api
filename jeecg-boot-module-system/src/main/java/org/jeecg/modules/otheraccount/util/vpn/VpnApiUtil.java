@@ -201,4 +201,43 @@ public class VpnApiUtil {
   }
 
 
+  /**
+   * 重置vpn密码
+   */
+  public VpnApiUtil resetPwdVpnUser(String username, String password) {
+
+    VpnUser user = getVpnUser(username);
+    //
+    JSONObject paramMap = new JSONObject();
+    paramMap.put("send_email", false);
+    paramMap.put("id", user.getId());
+    paramMap.put("status", 0);
+    paramMap.put("disable_otp", true);
+    paramMap.put("groups", user.getGroups());
+    paramMap.put("username", username);
+    paramMap.put("nickname", user.getNickname());
+    paramMap.put("email", user.getNickname());
+    paramMap.put("pin_code", password);
+    //
+    //{"send_email":false,"status":1,"groups":["智审数据"],"username":"test0001","nickname":"你好测试001","email":"test0001@qq.com","disable_otp":true,"pin_code":"Abc@123456"}
+    //
+    Map<String, String> headers = new HashMap<String, String>();
+    headers.put("jwt", this.token);
+    //
+    String result = HttpRequest.post(this.baseUrl + "/user/set")
+        .header(Header.CONTENT_TYPE, "application/json;charset=UTF-8")
+        .addHeaders(headers)
+        .body(paramMap.toJSONString())
+        .timeout(20000)//超时，毫秒
+        .execute().body();
+//    System.out.println(result);
+    JSONObject json = JSONObject.parseObject(result);
+    if (!"0".equals(json.getString("code"))) {
+      //{"code":0,"msg":"success","location":"/anylink/server/admin/api_user.go:111","data":null}
+      throw new RuntimeException("VPN禁用失败!" + json.getString("msg"));
+    }
+    return this;
+  }
+
+
 }

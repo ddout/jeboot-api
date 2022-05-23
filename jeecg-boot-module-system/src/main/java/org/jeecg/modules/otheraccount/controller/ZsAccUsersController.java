@@ -1,5 +1,6 @@
 package org.jeecg.modules.otheraccount.controller;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -115,16 +116,16 @@ public class ZsAccUsersController extends JeecgController<ZsAccUsers, IZsAccUser
 	}
 
 	/**
-	 *  批量删除
+	 *  密码重置
 	 *
 	 * @param ids
 	 * @return
 	 */
-	@AutoLog(value = "研发资源账号-批量删除")
-	@ApiOperation(value="研发资源账号-批量删除", notes="研发资源账号-批量删除")
+	@AutoLog(value = "研发资源账号-批量密码重置")
+	@ApiOperation(value="研发资源账号-密码重置", notes="研发资源账号-密码重置")
 	@DeleteMapping(value = "/deleteBatch")
 	public Result<String> deleteBatch(@RequestParam(name="ids",required=true) String ids) {
-		this.zsAccUsersService.removeByIds(Arrays.asList(ids.split(",")));
+		this.zsAccUsersService.resetPwd(Arrays.asList(ids.split(",")));
 		return Result.OK("批量删除成功!");
 	}
 

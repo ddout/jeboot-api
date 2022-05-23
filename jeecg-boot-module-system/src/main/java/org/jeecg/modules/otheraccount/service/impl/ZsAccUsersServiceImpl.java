@@ -3,6 +3,8 @@ package org.jeecg.modules.otheraccount.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.SqlHelper;
+import java.io.Serializable;
+import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.gitlab4j.api.GitLabApi;
 import org.gitlab4j.api.GitLabApiException;
@@ -33,6 +35,55 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
   private AppAuthConfig appAuthConfig;
   @Autowired
   private IZenTaoService zenTaoService;
+
+  @Override
+  public boolean removeById(Serializable id) {
+    ZsAccUsers u = super.getById(id);
+    if(null != u){
+      u.setUstatus("禁用");
+      return updateById(u);
+    }
+    return false;
+  }
+
+  @Override
+  public void resetPwd(List<String> asList) {
+    //默认密码
+    String password = appAuthConfig.getDefaultPsw();
+    //
+    for(String id : asList){
+      ZsAccUsers zsAccUsers = super.getById(id);
+      if(null != zsAccUsers){
+        //GIT
+        if(!StringUtils.isEmpty(zsAccUsers.getUaccGit())){
+          User gitUser = getGitUser(zsAccUsers.getUaccGit());
+          if (null != gitUser && null != gitUser.getId()) {
+            GitLabApi gitLabApi = new GitLabApi(appAuthConfig.getGitUrl(),
+                appAuthConfig.getGitToken());
+            try {
+              gitLabApi.getUserApi().updateUser(gitUser, password);
+            } catch (GitLabApiException e) {
+              e.printStackTrace();
+              throw new RuntimeException("Git账号密码重置失败！", e);
+            }
+          }
+        }
+        //VPN
+        if(!StringUtils.isEmpty(zsAccUsers.getUaccVpn())){
+          VpnApiUtil vpnApiUtil = new VpnApiUtil(appAuthConfig.getVpnUrl())
+              .login(appAuthConfig.getVpnAdmin(), appAuthConfig.getVpnPwd());
+          VpnUser vpnUser = vpnApiUtil.getVpnUser(zsAccUsers.getUaccVpn());
+          if (null != vpnUser && null != vpnUser.getId()) {
+            vpnApiUtil.resetPwdVpnUser(vpnUser.getUsername(), password);
+          }
+        }
+        //禅道
+        if(!StringUtils.isEmpty(zsAccUsers.getUaccZentao())){
+          zenTaoService.resetUserPwd(zsAccUsers.getUaccZentao());
+        }
+      }
+    }
+  }
 
   @Override
   public boolean save(ZsAccUsers zsAccUsers) {
