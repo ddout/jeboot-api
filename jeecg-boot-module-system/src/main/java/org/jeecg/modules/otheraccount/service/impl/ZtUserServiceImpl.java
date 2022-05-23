@@ -95,5 +95,14 @@ public class ZtUserServiceImpl extends ServiceImpl<ZtUserMapper, ZtUser> impleme
 
   }
 
+  @Override
+  public void unBlockZtUser(ZtUser ztUser) {
+    ZtUser user = this.getUser4Account(ztUser.getAccount());
+    if (null != user && null != user.getId()) {
+      user.setDeleted("0");
+      super.updateById(user);
+    }
+  }
+
 
 }

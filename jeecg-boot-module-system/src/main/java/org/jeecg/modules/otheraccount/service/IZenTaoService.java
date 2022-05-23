@@ -32,4 +32,10 @@ public interface IZenTaoService extends IService<ZtUser> {
    * @param username
    */
   void resetUserPwd(String username);
+
+  /**
+   * 解锁
+   * @param ztUser
+   */
+  void unBlockZtUser(ZtUser ztUser);
 }

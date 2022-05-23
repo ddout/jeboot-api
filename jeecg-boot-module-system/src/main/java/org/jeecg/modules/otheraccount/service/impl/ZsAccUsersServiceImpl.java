@@ -2,6 +2,7 @@ package org.jeecg.modules.otheraccount.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.extension.toolkit.SqlHelper;
 import org.apache.commons.lang3.StringUtils;
 import org.gitlab4j.api.GitLabApi;
 import org.gitlab4j.api.GitLabApiException;
@@ -77,7 +78,7 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
       }
     }
     //VPN
-    if (uaccs.indexOf("GIT") > -1) {
+    if (uaccs.indexOf("VPN") > -1) {
       VpnApiUtil vpnApiUtil = new VpnApiUtil(appAuthConfig.getVpnUrl())
           .login(appAuthConfig.getVpnAdmin(), appAuthConfig.getVpnPwd());
       VpnUser vpnUser = vpnApiUtil.getVpnUser(unamePinyin);
@@ -106,6 +107,7 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
         zsAccUsers.setUaccZentao(unamePinyin);
       }
     }
+    zsAccUsers.setUstatus("启用");
     return super.save(zsAccUsers);
   }
 
@@ -157,6 +159,120 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
       throw new RuntimeException("Git账号创建失败！", e);
     }
     return x;
+  }
+
+
+  @Override
+  public boolean updateById(ZsAccUsers entity) {
+    //
+    if (StringUtils.isEmpty(entity.getId())) {
+      throw new RuntimeException("null id !");
+    }
+    //
+    ZsAccUsers zsAccUsers = super.getById(entity.getId());
+    //
+    zsAccUsers.setUemail(entity.getUemail());
+    zsAccUsers.setUphone(entity.getUphone());
+    zsAccUsers.setUstatus(entity.getUstatus());
+    //
+    //
+    String unamePinyin = PinYinUtil.strToPinyin(zsAccUsers.getUname());
+    //
+    if (StringUtils.isEmpty(zsAccUsers.getUemail())) {
+      zsAccUsers.setUemail(unamePinyin + "@qq.com");
+    }
+    //选择开启哪些账号-uaccs: GIT,VPN,ZENTAO
+    String uaccs = zsAccUsers.getUaccs();
+    //
+    if (!"启用".equals(entity.getUstatus())) {
+      //禁用
+      //GIT
+      if (uaccs.indexOf("GIT") > -1) {
+        User gitUser = getGitUser(unamePinyin);
+        if (null != gitUser && null != gitUser.getId()) {
+          GitLabApi gitLabApi = new GitLabApi(appAuthConfig.getGitUrl(),
+              appAuthConfig.getGitToken());
+          try {
+            gitLabApi.getUserApi().blockUser(gitUser.getId());
+          } catch (GitLabApiException e) {
+            throw new RuntimeException("Git账号禁用失败！", e);
+          }
+        }
+      }
+      //VPN
+      if (uaccs.indexOf("VPN") > -1) {
+        VpnApiUtil vpnApiUtil = new VpnApiUtil(appAuthConfig.getVpnUrl())
+            .login(appAuthConfig.getVpnAdmin(), appAuthConfig.getVpnPwd());
+        VpnUser vpnUser = vpnApiUtil.getVpnUser(unamePinyin);
+        if (null != vpnUser && null != vpnUser.getId()) {
+          vpnApiUtil.blockVpnUser(vpnUser.getUsername(),appAuthConfig.getDefaultPsw());
+        }
+      }
+      //ZENTAO
+      if (uaccs.indexOf("ZENTAO") > -1) {
+        ZtUser ztUser = zenTaoService.getUser4Account(unamePinyin);
+        if (null != ztUser && null != ztUser.getId()) {
+         zenTaoService.delZtUser(unamePinyin);
+        }
+      }
+    } else {
+      //
+      //GIT
+      if (uaccs.indexOf("GIT") > -1) {
+        User gitUser = getGitUser(unamePinyin);
+        if (null != gitUser && null != gitUser.getId()) {
+          zsAccUsers.setUaccGit(gitUser.getUsername());
+          GitLabApi gitLabApi = new GitLabApi(appAuthConfig.getGitUrl(),
+              appAuthConfig.getGitToken());
+          try {
+            gitLabApi.getUserApi().unblockUser(gitUser.getId());
+          } catch (GitLabApiException e) {
+            throw new RuntimeException("Git账号禁用失败！", e);
+          }
+        } else {
+          //创建git账号
+          gitUser = createGitUser(unamePinyin, zsAccUsers);
+          if (null == gitUser) {
+            throw new RuntimeException("Git账号创建失败！");
+          }
+          zsAccUsers.setUaccGit(gitUser.getUsername());
+        }
+      }
+      //VPN
+      if (uaccs.indexOf("GIT") > -1) {
+        VpnApiUtil vpnApiUtil = new VpnApiUtil(appAuthConfig.getVpnUrl())
+            .login(appAuthConfig.getVpnAdmin(), appAuthConfig.getVpnPwd());
+        VpnUser vpnUser = vpnApiUtil.getVpnUser(unamePinyin);
+        if (null != vpnUser && null != vpnUser.getId()) {
+          zsAccUsers.setUaccVpn(vpnUser.getUsername());
+          vpnApiUtil.UnBlockVpnUser(vpnUser.getUsername(),appAuthConfig.getDefaultPsw());
+        } else {
+          //创建vpn账号
+          vpnApiUtil
+              .createVpnUser(zsAccUsers.getUname(), unamePinyin, appAuthConfig.getDefaultPsw(),
+                  zsAccUsers.getUemail());
+          zsAccUsers.setUaccVpn(unamePinyin);
+        }
+      }
+      //ZENTAO
+      if (uaccs.indexOf("ZENTAO") > -1) {
+        ZtUser ztUser = zenTaoService.getUser4Account(unamePinyin);
+        if (null != ztUser && null != ztUser.getId()) {
+          zsAccUsers.setUaccZentao(unamePinyin);
+          zenTaoService.unBlockZtUser(ztUser);
+        } else {
+          //创建vpn账号
+          ztUser = new ZtUser();
+          ztUser.setAccount(unamePinyin);
+          ztUser.setRealname(zsAccUsers.getUname());
+          ztUser.setEmail(zsAccUsers.getUemail());
+          zenTaoService.createZtUser(ztUser);
+          zsAccUsers.setUaccZentao(unamePinyin);
+        }
+      }
+    }
+    //
+    return SqlHelper.retBool(this.getBaseMapper().updateById(zsAccUsers));
   }
 
 
