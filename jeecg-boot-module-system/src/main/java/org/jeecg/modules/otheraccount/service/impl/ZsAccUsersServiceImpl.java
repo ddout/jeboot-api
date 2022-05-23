@@ -2,6 +2,7 @@ package org.jeecg.modules.otheraccount.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.apache.commons.lang3.StringUtils;
 import org.gitlab4j.api.GitLabApi;
 import org.gitlab4j.api.GitLabApiException;
 import org.gitlab4j.api.models.User;
@@ -10,6 +11,8 @@ import org.jeecg.modules.otheraccount.entity.ZsAccUsers;
 import org.jeecg.modules.otheraccount.mapper.ZsAccUsersMapper;
 import org.jeecg.modules.otheraccount.service.IZsAccUsersService;
 import org.jeecg.modules.otheraccount.util.PinYinUtil;
+import org.jeecg.modules.otheraccount.util.vpn.VpnApiUtil;
+import org.jeecg.modules.otheraccount.util.vpn.VpnUser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -44,26 +47,48 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
     if (count > 0) {
       throw new RuntimeException("姓名已经存在");
     }
-    //uaccs: GIT,VPN,ZENTAO
-    String uaccs = zsAccUsers.getUaccs();
 
+    //选择开启哪些账号-uaccs: GIT,VPN,ZENTAO
+    String uaccs = zsAccUsers.getUaccs();
+    //
     //
     String unamePinyin = PinYinUtil.strToPinyin(zsAccUsers.getUname());
+    //
+    if (StringUtils.isEmpty(zsAccUsers.getUemail())) {
+      zsAccUsers.setUemail(unamePinyin + "qq.com");
+    }
+    //
     //GIT
-    if("GIT".indexOf(uaccs) > 0){
+    if (uaccs.indexOf("GIT") > -1) {
       User gitUser = getGitUser(unamePinyin);
       if (null != gitUser && null != gitUser.getId()) {
         zsAccUsers.setUaccGit(gitUser.getUsername());
       } else {
         //创建git账号
+        gitUser = createGitUser(unamePinyin, zsAccUsers);
+        if (null == gitUser) {
+          throw new RuntimeException("Git账号创建失败！");
+        }
         zsAccUsers.setUaccGit(gitUser.getUsername());
       }
     }
     //VPN
-    if("VPN".indexOf(uaccs) > 0){
+    if (uaccs.indexOf("GIT") > -1) {
+      VpnApiUtil vpnApiUtil = new VpnApiUtil(appAuthConfig.getVpnUrl())
+          .login(appAuthConfig.getVpnAdmin(), appAuthConfig.getVpnPwd());
+      VpnUser vpnUser = vpnApiUtil.getVpnUser(unamePinyin);
+      if (null != vpnUser && null != vpnUser.getId()) {
+        zsAccUsers.setUaccVpn(vpnUser.getUsername());
+      } else {
+        //创建vpn账号
+        vpnApiUtil
+            .createVpnUser(zsAccUsers.getUname(), unamePinyin, appAuthConfig.getDefaultPsw(),
+                zsAccUsers.getUemail());
+        zsAccUsers.setUaccVpn(unamePinyin);
+      }
     }
     //ZENTAO
-    if("ZENTAO".indexOf(uaccs) > 0){
+    if (uaccs.indexOf("ZENTAO") > -1) {
     }
     return super.save(zsAccUsers);
   }
@@ -86,6 +111,36 @@ public class ZsAccUsersServiceImpl extends ServiceImpl<ZsAccUsersMapper, ZsAccUs
       throw new RuntimeException("Git账号获取失败！", e);
     }
     return u3;
+  }
+
+
+  /**
+   * 创建git用户
+   *
+   * @param account ZsAccUsers 账号信息
+   * @return org.gitlab4j.api.models.User
+   */
+  private User createGitUser(String username, ZsAccUsers account) {
+    GitLabApi gitLabApi = new GitLabApi(appAuthConfig.getGitUrl(),
+        appAuthConfig.getGitToken());
+    // Create a new user with no password who will recieve a reset password email
+    User userConfig = new User()
+        .withEmail(account.getUemail())
+        .withName(account.getUname())
+        .withUsername(username);
+    //默认密码
+    String password = appAuthConfig.getDefaultPsw();
+    //不发送邮件
+    boolean sendResetPasswordEmail = false;
+    //
+    User x = null;
+    try {
+      x = gitLabApi.getUserApi().createUser(userConfig, password, sendResetPasswordEmail);
+    } catch (GitLabApiException e) {
+      e.printStackTrace();
+      throw new RuntimeException("Git账号创建失败！", e);
+    }
+    return x;
   }
 
 

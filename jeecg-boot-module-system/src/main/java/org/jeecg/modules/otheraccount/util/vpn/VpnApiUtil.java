@@ -26,7 +26,7 @@ public class VpnApiUtil {
     VpnUser u = b.getVpnUser("test001");
     System.out.println(u);
     //
-    b.createVpnUser("测试账号001", "test001","Test@0001");
+    b.createVpnUser("测试账号001", "test001","Test@0001", "test@qq.com");
 
   }
 
@@ -90,7 +90,7 @@ public class VpnApiUtil {
   /**
    * 创建vpn用户
    */
-  public VpnApiUtil createVpnUser(String nickname, String username, String password) {
+  public VpnApiUtil createVpnUser(String nickname, String username, String password, String email) {
     //
     JSONObject paramMap = new JSONObject();
     paramMap.put("send_email", false);
@@ -99,7 +99,7 @@ public class VpnApiUtil {
     paramMap.put("groups", new String[]{"智审数据"});
     paramMap.put("username", username);
     paramMap.put("nickname", nickname);
-    paramMap.put("email", username + "@qq.com");
+    paramMap.put("email", email);
     paramMap.put("pin_code", password);
     //
     //{"send_email":false,"status":1,"groups":["智审数据"],"username":"test0001","nickname":"你好测试001","email":"test0001@qq.com","disable_otp":true,"pin_code":"Abc@123456"}
